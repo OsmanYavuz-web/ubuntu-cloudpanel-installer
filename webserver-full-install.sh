@@ -320,7 +320,7 @@ if [ -f /etc/nginx/nginx.conf ]; then
 fi
 
 # ZRAM
-if systemctl is-active --quiet zram-config 2>/dev/null || [ -d /sys/block/zram0 ]; then
+if dpkg -l zram-config 2>/dev/null | grep -q "^ii"; then
   echo -e "${YELLOW}✓ ZRAM zaten kurulu${NC}"
 else
   echo "ZRAM kuruluyor..."
