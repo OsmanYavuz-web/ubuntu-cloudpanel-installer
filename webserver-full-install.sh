@@ -34,7 +34,7 @@ echo ""
 echo -e "${YELLOW}Bu script şunları yapacak:${NC}"
 echo "  - Sistem güncellemesi"
 echo "  - SSH, Fail2Ban, UFW kurulumu"
-echo "  - Swap (4GB) oluşturma"
+echo "  - Swap oluşturma (dinamik: 4-8GB)"
 echo "  - CloudPanel kurulumu (MariaDB 11.4)"
 echo "  - PHP optimizasyonları (Laravel için)"
 echo "  - Redis kurulumu"
@@ -126,18 +126,26 @@ else
 fi
 ufw status verbose
 
-echo -e "\n${GREEN}[8/15] Swap (4GB) kontrol ediliyor...${NC}"
+echo -e "\n${GREEN}[8/15] Swap yapılandırılıyor...${NC}"
 if swapon --show | grep -q '/swapfile'; then
   CURRENT_SWAP_SIZE=$(swapon --show --noheadings --bytes | grep '/swapfile' | awk '{print $3}')
-  EXPECTED_SIZE=$((4 * 1024 * 1024 * 1024)) # 4GB in bytes
+  RAM_GB=$(free -g | awk '/^Mem:/{print $2}')
+  EXPECTED_SIZE=$((RAM_GB * 2))
+  [ $EXPECTED_SIZE -lt 4 ] && EXPECTED_SIZE=4
+  [ $EXPECTED_SIZE -gt 8 ] && EXPECTED_SIZE=8
+  EXPECTED_SIZE_BYTES=$((EXPECTED_SIZE * 1024 * 1024 * 1024))
   
-  if [ "$CURRENT_SWAP_SIZE" -ge "$EXPECTED_SIZE" ]; then
+  if [ "$CURRENT_SWAP_SIZE" -ge "$EXPECTED_SIZE_BYTES" ]; then
     echo -e "${YELLOW}✓ Swap zaten yapılandırılmış ($(swapon --show | grep swapfile | awk '{print $3}')), atlanıyor...${NC}"
   else
-    echo "Mevcut swap küçük, 4GB'a yükseltiliyor..."
+    echo "Mevcut swap küçük, yeniden oluşturuluyor..."
     swapoff -a || true
     rm -f /swapfile || true
-    fallocate -l 4G /swapfile
+    RAM_GB=$(free -g | awk '/^Mem:/{print $2}')
+    SWAP_SIZE=$((RAM_GB * 2))
+    [ $SWAP_SIZE -lt 4 ] && SWAP_SIZE=4
+    [ $SWAP_SIZE -gt 8 ] && SWAP_SIZE=8
+    fallocate -l ${SWAP_SIZE}G /swapfile
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
@@ -148,8 +156,13 @@ else
   swapoff -a || true
   rm -f /swapfile || true
   
-  # 4GB swap oluştur
-  fallocate -l 4G /swapfile
+  # Dinamik swap oluştur (RAM'e göre 2x, min 4GB, max 8GB)
+  RAM_GB=$(free -g | awk '/^Mem:/{print $2}')
+  SWAP_SIZE=$((RAM_GB * 2))
+  [ $SWAP_SIZE -lt 4 ] && SWAP_SIZE=4
+  [ $SWAP_SIZE -gt 8 ] && SWAP_SIZE=8
+  
+  fallocate -l ${SWAP_SIZE}G /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile
@@ -163,6 +176,7 @@ fi
 # swappiness ayarla
 if [ ! -f /etc/sysctl.d/99-swappiness.conf ] || ! grep -q 'vm.swappiness=10' /etc/sysctl.d/99-swappiness.conf; then
   echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf
+  echo 'vm.vfs_cache_pressure=50' >> /etc/sysctl.d/99-swappiness.conf
   sysctl --system
 fi
 
