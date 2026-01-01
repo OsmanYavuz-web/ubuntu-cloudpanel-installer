@@ -2,6 +2,10 @@
 # CloudPanel Web Server Tam Otomatik Kurulum Scripti
 # Ubuntu Server 24.04 için optimize edilmiştir
 # Kullanım: sudo bash webserver-full-install.sh
+#
+# Geliştirici: Osman Yavuz
+# GitHub: https://github.com/OsmanYavuz-web/ubuntu-cloudpanel-installer
+# Repository: https://github.com/OsmanYavuz-web/ubuntu-cloudpanel-installer
 
 set -euo pipefail
 
@@ -52,11 +56,14 @@ LOG_FILE="/var/log/webserver-full-install.log"
 exec > >(tee -a "$LOG_FILE")
 exec 2>&1
 
-echo -e "\n${GREEN}[1/15] Sistem güncelleniyor...${NC}"
+echo -e "\n${GREEN}[1/16] Sistem güncelleniyor...${NC}"
 apt update && apt upgrade -y
 apt install -y wget curl net-tools htop sudo
 
-echo -e "\n${GREEN}[2/15] SSH Sunucusu kontrol ediliyor...${NC}"
+echo -e "\n${GREEN}[2/16] Gerekli paketler yükleniyor...${NC}"
+apt install -y curl git ca-certificates gnupg lsb-release bind9-dnsutils wget net-tools htop
+
+echo -e "\n${GREEN}[3/16] SSH Sunucusu kontrol ediliyor...${NC}"
 if systemctl is-active --quiet ssh; then
   echo -e "${YELLOW}✓ SSH zaten kurulu ve çalışıyor, atlanıyor...${NC}"
 else
@@ -68,41 +75,19 @@ fi
 echo "SSH durumu:"
 systemctl status ssh --no-pager | head -5
 
-echo -e "\n${GREEN}[3/15] Saat dilimi ve NTP ayarlanıyor...${NC}"
+echo -e "\n${GREEN}[4/16] Saat dilimi ve NTP ayarlanıyor...${NC}"
 timedatectl set-timezone Europe/Istanbul
 timedatectl set-ntp true
 timedatectl
 
-echo -e "\n${GREEN}[4/15] Otomatik güvenlik güncellemeleri yapılandırılıyor...${NC}"
+echo -e "\n${GREEN}[5/16] Otomatik güvenlik güncellemeleri yapılandırılıyor...${NC}"
 apt install -y unattended-upgrades
 echo 'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";' > /etc/apt/apt.conf.d/20auto-upgrades
 echo -e "${YELLOW}Not: unattended-upgrades sadece security güncellemelerini yapacak şekilde yapılandırılmalıdır.${NC}"
 
-echo -e "\n${GREEN}[5/15] journald log boyut yönetimi yapılandırılıyor...${NC}"
-mkdir -p /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/size-limit.conf <<'EOF'
-[Journal]
-SystemMaxUse=200M
-SystemMaxFileSize=50M
-EOF
-systemctl restart systemd-journald
-echo "journald disk kullanımı:"
-journalctl --disk-usage
-
-echo -e "\n${GREEN}[6/15] Fail2Ban kontrol ediliyor...${NC}"
-if systemctl is-active --quiet fail2ban; then
-  echo -e "${YELLOW}✓ Fail2Ban zaten kurulu ve çalışıyor, atlanıyor...${NC}"
-else
-  echo "Fail2Ban kuruluyor..."
-  apt install -y fail2ban
-  systemctl enable fail2ban
-  systemctl start fail2ban
-fi
-fail2ban-client status
-
-echo -e "\n${GREEN}[7/15] UFW Firewall yapılandırılıyor...${NC}"
+echo -e "\n${GREEN}[6/16] UFW Firewall yapılandırılıyor...${NC}"
 apt install -y ufw
 
 # UFW zaten aktifse kuralları koru, değilse yeni kurallar ekle
@@ -126,7 +111,18 @@ else
 fi
 ufw status verbose
 
-echo -e "\n${GREEN}[8/15] Swap yapılandırılıyor...${NC}"
+echo -e "\n${GREEN}[7/16] Fail2Ban kontrol ediliyor...${NC}"
+if systemctl is-active --quiet fail2ban; then
+  echo -e "${YELLOW}✓ Fail2Ban zaten kurulu ve çalışıyor, atlanıyor...${NC}"
+else
+  echo "Fail2Ban kuruluyor..."
+  apt install -y fail2ban
+  systemctl enable fail2ban
+  systemctl start fail2ban
+fi
+fail2ban-client status || true
+
+echo -e "\n${GREEN}[8/16] Swap yapılandırılıyor...${NC}"
 if swapon --show | grep -q '/swapfile'; then
   CURRENT_SWAP_SIZE=$(swapon --show --noheadings --bytes | grep '/swapfile' | awk '{print $3}')
   RAM_GB=$(free -g | awk '/^Mem:/{print $2}')
@@ -184,7 +180,7 @@ echo "Swap durumu:"
 swapon --show
 free -h
 
-echo -e "\n${GREEN}[9/15] CloudPanel kontrol ediliyor...${NC}"
+echo -e "\n${GREEN}[9/16] CloudPanel kontrol ediliyor...${NC}"
 
 # CloudPanel'in kurulu olup olmadığını kontrol et (çoklu kontrol)
 CLOUDPANEL_INSTALLED=false
@@ -225,7 +221,7 @@ else
   }
 fi
 
-echo -e "\n${GREEN}[10/15] Nginx Logrotate yapılandırılıyor...${NC}"
+echo -e "\n${GREEN}[10/16] Nginx Logrotate yapılandırılıyor...${NC}"
 cat > /etc/logrotate.d/nginx <<'EOF'
 /var/log/nginx/*.log {
     daily
@@ -244,7 +240,7 @@ EOF
 echo "Logrotate test:"
 logrotate -d /etc/logrotate.d/nginx | head -10
 
-echo -e "\n${GREEN}[11/15] MariaDB optimizasyonları uygulanıyor...${NC}"
+echo -e "\n${GREEN}[11/16] MariaDB optimizasyonları uygulanıyor...${NC}"
 
 if systemctl is-active --quiet mariadb 2>/dev/null; then
   if [ -f /etc/mysql/mariadb.conf.d/90-optimized.cnf ]; then
@@ -271,7 +267,7 @@ else
   echo -e "${YELLOW}⚠ MariaDB çalışmıyor, optimizasyon atlanıyor...${NC}"
 fi
 
-echo -e "\n${GREEN}[12/15] Ek sistem ayarları yapılandırılıyor...${NC}"
+echo -e "\n${GREEN}[12/16] Sistem optimizasyonları uygulanıyor...${NC}"
 
 # limits.conf
 if ! grep -q "nofile 65535" /etc/security/limits.conf; then
@@ -288,15 +284,15 @@ if [ ! -f /etc/systemd/system.conf.d/limits.conf ] || ! grep -q "DefaultLimitNOF
   echo "Systemd limits yapılandırılıyor..."
   echo "[Manager]
 DefaultLimitNOFILE=65535" > /etc/systemd/system.conf.d/limits.conf
-  systemctl daemon-reexec
+  systemctl daemon-reload
 else
   echo -e "${YELLOW}✓ Systemd limits zaten yapılandırılmış${NC}"
 fi
 
 # Kernel TCP optimizasyonları
-if [ ! -f /etc/sysctl.d/99-network-optimizations.conf ]; then
+if [ ! -f /etc/sysctl.d/99-cloudpanel-optimizations.conf ]; then
   echo "Kernel TCP optimizasyonları yapılandırılıyor..."
-  cat > /etc/sysctl.d/99-network-optimizations.conf <<'EOF'
+  cat > /etc/sysctl.d/99-cloudpanel-optimizations.conf <<'EOF'
 net.core.somaxconn = 4096
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 15
@@ -319,6 +315,22 @@ if [ -f /etc/nginx/nginx.conf ]; then
   fi
 fi
 
+# Journald log boyut yönetimi
+mkdir -p /etc/systemd/journald.conf.d
+if [ ! -f /etc/systemd/journald.conf.d/size-limit.conf ]; then
+  echo "Journald log yönetimi yapılandırılıyor..."
+  cat > /etc/systemd/journald.conf.d/size-limit.conf <<'EOF'
+[Journal]
+SystemMaxUse=200M
+SystemMaxFileSize=50M
+EOF
+  systemctl restart systemd-journald
+else
+  echo -e "${YELLOW}✓ Journald log yönetimi zaten yapılandırılmış${NC}"
+fi
+echo "journald disk kullanımı:"
+journalctl --disk-usage
+
 # ZRAM
 if dpkg -l zram-config 2>/dev/null | grep -q "^ii"; then
   echo -e "${YELLOW}✓ ZRAM zaten kurulu${NC}"
@@ -327,7 +339,70 @@ else
   apt install -y zram-config
 fi
 
-echo -e "\n${GREEN}[13/15] PHP optimizasyonları yapılandırılıyor...${NC}"
+echo -e "${GREEN}Sistem optimizasyonları tamamlandı${NC}"
+
+echo -e "\n${GREEN}[13/16] Otomatik bakım mekanizmaları yapılandırılıyor...${NC}"
+
+# apt autoremove otomasyonu (haftalık)
+if [ ! -f /etc/cron.weekly/apt-autoremove ]; then
+  echo "apt autoremove cron job oluşturuluyor..."
+  cat > /etc/cron.weekly/apt-autoremove <<'EOF'
+#!/bin/bash
+# Otomatik kullanılmayan paket temizliği
+/usr/bin/apt-get autoremove -y >/dev/null 2>&1
+/usr/bin/apt-get autoclean -y >/dev/null 2>&1
+EOF
+  chmod +x /etc/cron.weekly/apt-autoremove
+else
+  echo -e "${YELLOW}✓ apt autoremove cron job zaten mevcut${NC}"
+fi
+
+# Disk temizliği (haftalık - /tmp, eski loglar)
+if [ ! -f /etc/cron.weekly/system-cleanup ]; then
+  echo "Sistem temizliği cron job oluşturuluyor..."
+  cat > /etc/cron.weekly/system-cleanup <<'EOF'
+#!/bin/bash
+# Otomatik disk temizliği
+# /tmp dizinindeki 7 günden eski dosyaları temizle
+find /tmp -type f -atime +7 -delete 2>/dev/null
+find /tmp -type d -empty -delete 2>/dev/null
+
+# Eski kernel paketlerini temizle (en son 2 kernel'i koru)
+OLD_KERNELS=$(dpkg -l | grep -E 'linux-image-[0-9]' | grep -v $(uname -r | sed 's/-generic//') | awk '{print $2}' | head -n -2)
+if [ -n "$OLD_KERNELS" ]; then
+  apt-get purge -y $OLD_KERNELS >/dev/null 2>&1
+fi
+EOF
+  chmod +x /etc/cron.weekly/system-cleanup
+else
+  echo -e "${YELLOW}✓ Sistem temizliği cron job zaten mevcut${NC}"
+fi
+
+# Sistem sağlık kontrolü (günlük - disk kullanımı uyarısı)
+if [ ! -f /etc/cron.daily/system-health-check ]; then
+  echo "Sistem sağlık kontrolü cron job oluşturuluyor..."
+  cat > /etc/cron.daily/system-health-check <<'EOF'
+#!/bin/bash
+# Disk kullanımı kontrolü ve uyarı
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ "$DISK_USAGE" -gt 85 ]; then
+  echo "UYARI: Disk kullanımı %${DISK_USAGE} - Kritik seviyeye yaklaşıyor!" | logger -t system-health
+fi
+
+# Swap kullanımı kontrolü
+SWAP_USAGE=$(free | awk '/^Swap:/ {if ($2>0) printf "%.0f", $3*100/$2; else print "0"}')
+if [ "$SWAP_USAGE" -gt 80 ]; then
+  echo "UYARI: Swap kullanımı %${SWAP_USAGE} - RAM yetersiz olabilir!" | logger -t system-health
+fi
+EOF
+  chmod +x /etc/cron.daily/system-health-check
+else
+  echo -e "${YELLOW}✓ Sistem sağlık kontrolü cron job zaten mevcut${NC}"
+fi
+
+echo -e "${GREEN}Otomatik bakım mekanizmaları yapılandırıldı${NC}"
+
+echo -e "\n${GREEN}[14/17] PHP optimizasyonları yapılandırılıyor...${NC}"
 
 # PHP versiyonunu tespit et
 PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null || echo "8.3")
@@ -383,7 +458,40 @@ systemctl restart "php$PHP_VERSION-fpm"
 echo "PHP-FPM durumu:"
 systemctl status "php$PHP_VERSION-fpm" --no-pager | head -5
 
-echo -e "\n${GREEN}[14/15] Redis kontrol ediliyor...${NC}"
+echo -e "\n${GREEN}[15/17] MariaDB Laravel optimizasyonları uygulanıyor...${NC}"
+
+if systemctl is-active --quiet mariadb 2>/dev/null; then
+  if [ -f /etc/mysql/mariadb.conf.d/91-laravel-optimized.cnf ]; then
+    echo -e "${YELLOW}✓ Laravel optimizasyon dosyası zaten mevcut, güncelleniyor...${NC}"
+  else
+    echo "Laravel optimizasyon dosyası oluşturuluyor..."
+  fi
+  
+  cat > /etc/mysql/mariadb.conf.d/91-laravel-optimized.cnf <<'EOF'
+[mysqld]
+# Query Cache (MariaDB 10.x için)
+query_cache_type = 1
+query_cache_size = 128M
+query_cache_limit = 2M
+
+# Connection Pool
+max_connections = 500
+thread_cache_size = 128
+
+# Table Cache
+table_open_cache = 4000
+table_definition_cache = 2000
+
+# Temp Tables
+tmp_table_size = 128M
+max_heap_table_size = 128M
+EOF
+  systemctl restart mariadb
+else
+  echo -e "${YELLOW}⚠ MariaDB çalışmıyor, Laravel optimizasyonu atlanıyor...${NC}"
+fi
+
+echo -e "\n${GREEN}[16/17] Redis kontrol ediliyor...${NC}"
 
 # Redis server kontrolü
 if systemctl is-active --quiet redis-server; then
@@ -426,51 +534,20 @@ echo "Redis durumu:"
 systemctl status redis-server --no-pager | head -5
 redis-cli ping
 
-echo -e "\n${GREEN}[15/15] MariaDB Laravel optimizasyonları uygulanıyor...${NC}"
-
-if systemctl is-active --quiet mariadb 2>/dev/null; then
-  if [ -f /etc/mysql/mariadb.conf.d/91-laravel-optimized.cnf ]; then
-    echo -e "${YELLOW}✓ Laravel optimizasyon dosyası zaten mevcut, güncelleniyor...${NC}"
-  else
-    echo "Laravel optimizasyon dosyası oluşturuluyor..."
-  fi
-  
-  cat > /etc/mysql/mariadb.conf.d/91-laravel-optimized.cnf <<'EOF'
-[mysqld]
-# Query Cache (MariaDB 10.x için)
-query_cache_type = 1
-query_cache_size = 128M
-query_cache_limit = 2M
-
-# Connection Pool
-max_connections = 500
-thread_cache_size = 128
-
-# Table Cache
-table_open_cache = 4000
-table_definition_cache = 2000
-
-# Temp Tables
-tmp_table_size = 128M
-max_heap_table_size = 128M
-EOF
-  systemctl restart mariadb
-else
-  echo -e "${YELLOW}⚠ MariaDB çalışmıyor, Laravel optimizasyonu atlanıyor...${NC}"
-fi
+echo -e "\n${GREEN}[17/17] Kurulum özeti${NC}"
 
 echo -e "\n${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}✓ Kurulum başarıyla tamamlandı!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "${YELLOW}Kurulum Sonrası Kontroller:${NC}"
+echo -e "${YELLOW}Kurulum Sonrası Adımlar:${NC}"
 echo ""
 echo "1. CloudPanel UI: https://$(hostname -I | awk '{print $1}'):8443"
 echo "   (Tarayıcınızda açın ve admin kullanıcısı oluşturun)"
 echo ""
 echo "2. Sistem Durumu:"
 echo "   - UFW: $(ufw status | grep Status)"
-echo "   - Fail2Ban: $(fail2ban-client status | grep 'Number of jail')"
+echo "   - Fail2Ban: $(fail2ban-client status | grep 'Number of jail' 2>/dev/null || echo 'Çalışıyor')"
 echo "   - Swap: $(swapon --show | tail -1)"
 echo "   - PHP: $(php -v | head -1)"
 echo "   - Redis: $(redis-cli ping 2>/dev/null || echo 'HATA')"
