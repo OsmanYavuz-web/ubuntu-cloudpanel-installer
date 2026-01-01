@@ -114,6 +114,29 @@ Kurulum sonrası: `https://SUNUCU-IP:8443`
 
 ---
 
+## 💾 Disk Büyütme (LVM)
+
+Ubuntu sunucunuzda disk alanınızı büyüttüyseniz (örneğin bulut sağlayıcı veya sanal makine üzerinden), LVM kullanarak disk büyütme işlemini otomatik yapabilirsiniz.
+
+**📦 Repository:** [ubuntu-disk-resize](https://github.com/OsmanYavuz-web/ubuntu-disk-resize)
+
+> ⚠️ **Önemli:** Bu script sadece LVM (Logical Volume Manager) kullanan Ubuntu sistemler için çalışır. Disk büyütme işlemi öncesi yedek almanız önerilir.
+
+```bash
+# Script'i indirin
+wget https://raw.githubusercontent.com/OsmanYavuz-web/ubuntu-disk-resize/main/disk-resize.sh
+# veya
+curl -O https://raw.githubusercontent.com/OsmanYavuz-web/ubuntu-disk-resize/main/disk-resize.sh
+
+# Çalıştırma izni verin
+chmod +x disk-resize.sh
+
+# Root yetkisiyle çalıştırın
+sudo bash disk-resize.sh
+```
+
+---
+
 ## 📞 Destek ve Kaynaklar
 
 **Geliştirici:** Osman Yavuz
